@@ -916,10 +916,21 @@ if (!gotTheLock) {
                 if (settings.enableDistributedServer) {
                     console.log('[Main] Distributed server is enabled. Initializing...');
                     const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
+                    // 从 VCPDistributedServer/config.env 读取 ServerName
+                    let distServerName = 'VCPChat桌面端';
+                    try {
+                        const distConfigPath = path.join(__dirname, 'VCPDistributedServer', 'config.env');
+                        if (require('fs').existsSync(distConfigPath)) {
+                            const distEnv = require('dotenv').parse(require('fs').readFileSync(distConfigPath));
+                            if (distEnv.ServerName) distServerName = distEnv.ServerName;
+                        }
+                    } catch (e) {
+                        console.warn('[Main] Could not read ServerName from VCPDistributedServer/config.env, using default.');
+                    }
                     const config = {
                         mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
                         vcpKey: settings.vcpLogKey,
-                        serverName: 'VCP-Desktop-Client-Distributed-Server',
+                        serverName: distServerName,
                         debugMode: true, // Or read from settings if you add this option
                         rendererProcess: mainWindow.webContents, // Pass the renderer process object
                         handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
