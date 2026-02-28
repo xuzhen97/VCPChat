@@ -30,6 +30,7 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableRegenerateConfirmation: document.getElementById('enableRegenerateConfirmation').checked,
         vcpServerUrl: settingsManager.completeVcpUrl(document.getElementById('vcpServerUrl').value.trim()),
         vcpApiKey: document.getElementById('vcpApiKey').value,
+        vcpNodeName: document.getElementById('vcpNodeName')?.value?.trim() || '',
         vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
         vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
         topicSummaryModel: document.getElementById('topicSummaryModel').value.trim(),

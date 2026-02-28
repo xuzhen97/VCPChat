@@ -1451,6 +1451,7 @@ async function syncGlobalSettingsToUI() {
     const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
     safeSet('vcpServerUrl', completedUrl);
     safeSet('vcpApiKey', globalSettings.vcpApiKey || '');
+    safeSet('vcpNodeName', globalSettings.vcpNodeName || '');
     safeSet('vcpLogUrl', globalSettings.vcpLogUrl || '');
     safeSet('vcpLogKey', globalSettings.vcpLogKey || '');
     safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');

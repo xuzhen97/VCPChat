@@ -12,7 +12,7 @@ require = function (id) {
     return result;
 };
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, session } = require('electron'); // Added screen, clipboard, shell, and session
 // selection-hook is now managed in assistantHandlers
 const path = require('path');
 const crypto = require('crypto');
@@ -385,6 +385,40 @@ if (!gotTheLock) {
 
 
 
+// 全局拦截 VCPToolBox 请求，注入节点名头部
+async function setupVcpNodeHeaderInjection(appSettingsManager) {
+    try {
+        const settings = await appSettingsManager.readSettings();
+        const vcpNodeName = settings.vcpNodeName;
+        const vcpServerUrl = settings.vcpServerUrl;
+        if (!vcpServerUrl) {
+            console.log('[Main] VCP Server URL not configured, skipping node header injection');
+            return;
+        }
+        let vcpOrigin;
+        try {
+            const url = new URL(vcpServerUrl);
+            vcpOrigin = url.origin;
+        } catch (e) {
+            console.error('[Main] Invalid VCP Server URL, cannot setup node header injection:', e);
+            return;
+        }
+        console.log(`[Main] Setting up X-VCP-Node header injection for ${vcpOrigin}`);
+        session.defaultSession.webRequest.onBeforeSendHeaders(
+            { urls: [`${vcpOrigin}/*`] },
+            (details, callback) => {
+                if (vcpNodeName && vcpNodeName.trim()) {
+                    details.requestHeaders['X-VCP-Node'] = vcpNodeName.trim();
+                    console.log(`[Main] Injected X-VCP-Node: ${vcpNodeName.trim()} for ${details.url}`);
+                }
+                callback({ requestHeaders: details.requestHeaders });
+            }
+        );
+    } catch (error) {
+        console.error('[Main] Failed to setup VCP node header injection:', error);
+    }
+}
+
     app.whenReady().then(async () => { // Make the function async
         // 全局处理所有窗口的新窗口打开请求，确保外部链接在系统浏览器中打开
         app.on('web-contents-created', (event, contents) => {
@@ -468,6 +502,9 @@ if (!gotTheLock) {
                 cachedModels = []; // Clear cache on error
             }
         }
+
+        // 在创建主窗口之前，设置 VCP 节点头部注入拦截器
+        await setupVcpNodeHeaderInjection(appSettingsManager);
 
         // Create the main window first to give immediate feedback to the user.
         createWindow();
