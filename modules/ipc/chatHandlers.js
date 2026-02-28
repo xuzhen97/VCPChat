@@ -765,11 +765,13 @@ function initialize(mainWindow, context) {
                 return { error: `请求体序列化失败: ${serializeError.message}` };
             }
 
+            const vcpNodeName = settings.vcpNodeName;
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${vcpApiKey}`
+                    'Authorization': `Bearer ${vcpApiKey}`,
+                    ...(vcpNodeName && vcpNodeName.trim() ? { 'X-VCP-Node': vcpNodeName.trim() } : {})
                 },
                 body: serializedBody
             });
