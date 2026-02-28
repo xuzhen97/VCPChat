@@ -317,14 +317,20 @@ window.chatManager = (() => {
             console.log('[ChatManager] Blocked topic switch due to active Flowlock');
             return;
         }
-        
+
+        const { messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId !== topicId) {
             currentTopicIdRef.set(topicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
-            
+
+            // 切换话题时立即启用输入框
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            attachFileBtn.disabled = false;
+
             const currentSelectedItem = currentSelectedItemRef.get();
-            
+
             // Explicitly start watcher for the new topic
             const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
             if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
@@ -350,6 +356,11 @@ window.chatManager = (() => {
         config.topics = remainingTopics;
         currentSelectedItemRef.set(currentSelectedItem);
 
+        // 立即启用输入框，不等待后续异步操作
+        messageInput.disabled = false;
+        sendMessageBtn.disabled = false;
+        attachFileBtn.disabled = false;
+
         if (remainingTopics && remainingTopics.length > 0) {
             const newSelectedTopic = remainingTopics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
             await selectItem(currentSelectedItem.id, currentSelectedItem.type, currentSelectedItem.name, currentSelectedItem.avatarUrl, (currentSelectedItem.config || currentSelectedItem));
@@ -365,12 +376,6 @@ window.chatManager = (() => {
             }
             await displayTopicTimestampBubble(currentSelectedItem.id, currentSelectedItem.type, null);
         }
-
-        // 确保删除话题后输入框始终保持启用状态
-        // selectItem 的早期返回可能跳过输入框启用逻辑
-        messageInput.disabled = false;
-        sendMessageBtn.disabled = false;
-        attachFileBtn.disabled = false;
     }
 
     async function loadChatHistory(itemId, itemType, topicId) {
