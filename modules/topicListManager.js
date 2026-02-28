@@ -523,6 +523,7 @@ window.topicListManager = (() => {
         deleteTopicPermanentlyOption.onclick = async () => {
             closeTopicContextMenu();
             if (confirm(`确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`)) {
+                console.warn(`[DIAG] 话题删除确认: topic.id=${topic.id}, currentTopicId=${currentTopicIdRef.get()}`);
                 let result;
                 if (itemType === 'agent') {
                     result = await electronAPI.deleteTopic(itemFullConfig.id, topic.id);
@@ -531,9 +532,15 @@ window.topicListManager = (() => {
                 }
 
                 if (result && result.success) {
+                    console.warn(`[DIAG] 话题删除成功, currentTopicId=${currentTopicIdRef.get()}, topic.id=${topic.id}, 是否当前话题: ${currentTopicIdRef.get() === topic.id}`);
                     if (currentTopicIdRef.get() === topic.id) {
+                        console.warn('[DIAG] 将调用 handleTopicDeletion');
                         await mainRendererFunctions.handleTopicDeletion(result.remainingTopics);
+                        console.warn('[DIAG] handleTopicDeletion 完成');
+                    } else {
+                        console.warn('[DIAG] 删除的不是当前话题，跳过 handleTopicDeletion');
                     }
+                    console.warn('[DIAG] 将调用 loadTopicList');
                     loadTopicList();
                 } else {
                     uiHelper.showToastNotification(`删除话题 "${topic.name}" 失败: ${result ? result.error : '未知错误'}`, 'error');

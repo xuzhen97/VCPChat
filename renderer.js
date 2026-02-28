@@ -41,6 +41,32 @@ const itemListUl = document.getElementById('agentList'); // Renamed from agentLi
 const currentChatNameH3 = document.getElementById('currentChatAgentName'); // Will show Agent or Group name
 const chatMessagesDiv = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
+// === 诊断代码：监控 messageInput.disabled 属性变化 ===
+if (messageInput) {
+    // 方法1：MutationObserver 监控 disabled 属性变化
+    const _diagObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'disabled') {
+                const isDisabled = messageInput.disabled;
+                console.warn(`[DIAG] messageInput.disabled 属性变化 → ${isDisabled}`, new Error().stack);
+            }
+        });
+    });
+    _diagObserver.observe(messageInput, { attributes: true, attributeFilter: ['disabled'] });
+
+    // 方法2：拦截 disabled 属性的 setter
+    const _origDescriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'disabled');
+    Object.defineProperty(messageInput, 'disabled', {
+        get() { return _origDescriptor.get.call(this); },
+        set(val) {
+            console.warn(`[DIAG] messageInput.disabled = ${val}`, new Error().stack);
+            _origDescriptor.set.call(this, val);
+        },
+        configurable: true,
+    });
+    console.log('[DIAG] messageInput.disabled 监控已安装');
+}
+// === 诊断代码结束 ===
 const sendMessageBtn = document.getElementById('sendMessageBtn');
 const attachFileBtn = document.getElementById('attachFileBtn');
 const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
