@@ -532,7 +532,7 @@ window.topicListManager = (() => {
 
                 if (result && result.success) {
                     if (currentTopicIdRef.get() === topic.id) {
-                        mainRendererFunctions.handleTopicDeletion(result.remainingTopics);
+                        await mainRendererFunctions.handleTopicDeletion(result.remainingTopics);
                     }
                     loadTopicList();
                 } else {

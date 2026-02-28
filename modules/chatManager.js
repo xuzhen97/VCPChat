@@ -344,6 +344,7 @@ window.chatManager = (() => {
     }
 
     async function handleTopicDeletion(remainingTopics) {
+        const { messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentSelectedItem = currentSelectedItemRef.get();
         const config = currentSelectedItem.config || currentSelectedItem;
         config.topics = remainingTopics;
@@ -364,6 +365,12 @@ window.chatManager = (() => {
             }
             await displayTopicTimestampBubble(currentSelectedItem.id, currentSelectedItem.type, null);
         }
+
+        // 确保删除话题后输入框始终保持启用状态
+        // selectItem 的早期返回可能跳过输入框启用逻辑
+        messageInput.disabled = false;
+        sendMessageBtn.disabled = false;
+        attachFileBtn.disabled = false;
     }
 
     async function loadChatHistory(itemId, itemType, topicId) {
