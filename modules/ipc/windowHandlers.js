@@ -14,7 +14,10 @@ function initialize(mainWindow, openChildWindows) {
     ipcMain.on('focus-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {
+            if (win.isMinimized()) win.restore();
+            win.show();
             win.focus();
+            win.webContents.focus();
         }
     });
 
