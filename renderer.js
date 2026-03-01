@@ -41,20 +41,9 @@ const itemListUl = document.getElementById('agentList'); // Renamed from agentLi
 const currentChatNameH3 = document.getElementById('currentChatAgentName'); // Will show Agent or Group name
 const chatMessagesDiv = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
-// === 诊断代码：监控 messageInput.disabled 属性变化 ===
+// === 诊断代码：全面监控 messageInput 状态 ===
 if (messageInput) {
-    // 方法1：MutationObserver 监控 disabled 属性变化
-    const _diagObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.attributeName === 'disabled') {
-                const isDisabled = messageInput.disabled;
-                console.warn(`[DIAG] messageInput.disabled 属性变化 → ${isDisabled}`, new Error().stack);
-            }
-        });
-    });
-    _diagObserver.observe(messageInput, { attributes: true, attributeFilter: ['disabled'] });
-
-    // 方法2：拦截 disabled 属性的 setter
+    // 监控 disabled 属性变化
     const _origDescriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'disabled');
     Object.defineProperty(messageInput, 'disabled', {
         get() { return _origDescriptor.get.call(this); },
@@ -64,7 +53,49 @@ if (messageInput) {
         },
         configurable: true,
     });
-    console.log('[DIAG] messageInput.disabled 监控已安装');
+
+    // 监控焦点变化
+    messageInput.addEventListener('focus', () => console.warn('[DIAG] messageInput 获得焦点'));
+    messageInput.addEventListener('blur', () => console.warn('[DIAG] messageInput 失去焦点', new Error().stack));
+
+    // 监控点击事件是否到达 textarea
+    messageInput.addEventListener('mousedown', (e) => {
+        console.warn(`[DIAG] messageInput mousedown: button=${e.button}, disabled=${messageInput.disabled}`);
+    });
+    messageInput.addEventListener('click', (e) => {
+        console.warn(`[DIAG] messageInput click 事件到达`);
+    });
+
+    // 监控 pointer-events 和覆盖层
+    messageInput.addEventListener('pointerdown', (e) => {
+        console.warn(`[DIAG] messageInput pointerdown 事件到达`);
+    });
+
+    // 监控窗口焦点
+    window.addEventListener('focus', () => console.warn('[DIAG] window 获得焦点'));
+    window.addEventListener('blur', () => console.warn('[DIAG] window 失去焦点'));
+
+    // 监控 document 焦点
+    document.addEventListener('focusin', (e) => {
+        if (e.target === messageInput) {
+            console.warn('[DIAG] document focusin → messageInput');
+        }
+    });
+
+    // 全局 mousedown 捕获阶段，检查是否有东西拦截了点击
+    document.addEventListener('mousedown', (e) => {
+        const inputRect = messageInput.getBoundingClientRect();
+        const isInInputArea = e.clientX >= inputRect.left && e.clientX <= inputRect.right &&
+                              e.clientY >= inputRect.top && e.clientY <= inputRect.bottom;
+        if (isInInputArea && e.target !== messageInput) {
+            console.warn(`[DIAG] 点击在 messageInput 区域内但目标不是 messageInput! 实际目标:`, e.target.tagName, e.target.id, e.target.className);
+            // 检查是否有覆盖元素
+            const elemAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+            console.warn(`[DIAG] elementFromPoint 返回:`, elemAtPoint?.tagName, elemAtPoint?.id, elemAtPoint?.className);
+        }
+    }, true); // 捕获阶段
+
+    console.log('[DIAG] messageInput 全面监控已安装');
 }
 // === 诊断代码结束 ===
 const sendMessageBtn = document.getElementById('sendMessageBtn');

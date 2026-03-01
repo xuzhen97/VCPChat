@@ -522,7 +522,11 @@ window.topicListManager = (() => {
         deleteTopicPermanentlyOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除此话题`;
         deleteTopicPermanentlyOption.onclick = async () => {
             closeTopicContextMenu();
+            console.warn('[DIAG] confirm() 对话框即将弹出');
+            const messageInput = document.getElementById('messageInput');
+            console.warn(`[DIAG] confirm前: document.activeElement=${document.activeElement?.tagName}#${document.activeElement?.id}, messageInput.disabled=${messageInput?.disabled}`);
             if (confirm(`确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`)) {
+                console.warn(`[DIAG] confirm()返回true, document.activeElement=${document.activeElement?.tagName}#${document.activeElement?.id}`);
                 console.warn(`[DIAG] 话题删除确认: topic.id=${topic.id}, currentTopicId=${currentTopicIdRef.get()}`);
                 let result;
                 if (itemType === 'agent') {
@@ -542,9 +546,18 @@ window.topicListManager = (() => {
                     }
                     console.warn('[DIAG] 将调用 loadTopicList');
                     loadTopicList();
+                    // [DIAG] 测试性修复：删除完成后恢复焦点
+                    console.warn(`[DIAG] loadTopicList已调用, 尝试恢复焦点到 messageInput`);
+                    if (messageInput && !messageInput.disabled) {
+                        window.focus();
+                        messageInput.focus();
+                        console.warn(`[DIAG] 焦点恢复完成, document.activeElement=${document.activeElement?.tagName}#${document.activeElement?.id}`);
+                    }
                 } else {
                     uiHelper.showToastNotification(`删除话题 "${topic.name}" 失败: ${result ? result.error : '未知错误'}`, 'error');
                 }
+            } else {
+                console.warn('[DIAG] confirm()返回false(用户取消)');
             }
         };
         menu.appendChild(deleteTopicPermanentlyOption);
