@@ -522,7 +522,11 @@ window.topicListManager = (() => {
         deleteTopicPermanentlyOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除此话题`;
         deleteTopicPermanentlyOption.onclick = async () => {
             closeTopicContextMenu();
-            if (confirm(`确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`)) {
+            const confirmed = await uiHelper.showConfirmDialog(
+                `确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`,
+                '删除话题'
+            );
+            if (confirmed) {
                 let result;
                 if (itemType === 'agent') {
                     result = await electronAPI.deleteTopic(itemFullConfig.id, topic.id);
@@ -538,12 +542,6 @@ window.topicListManager = (() => {
                 } else {
                     uiHelper.showToastNotification(`删除话题 "${topic.name}" 失败: ${result ? result.error : '未知错误'}`, 'error');
                 }
-
-                // confirm() 原生对话框导致 BrowserWindow 丢失 OS 级焦点
-                // 必须在所有异步操作完成后，延迟恢复焦点以确保 OS 事件已处理完毕
-                setTimeout(() => {
-                    if (electronAPI.focusWindow) electronAPI.focusWindow();
-                }, 150);
             }
         };
         menu.appendChild(deleteTopicPermanentlyOption);

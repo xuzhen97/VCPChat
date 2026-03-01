@@ -120,6 +120,49 @@
     };
 
     /**
+     * Shows a custom confirm dialog (replaces native confirm() to avoid OS focus issues).
+     * @param {string} message The confirmation message.
+     * @param {string} [title='确认'] The dialog title.
+     * @returns {Promise<boolean>} true if confirmed, false if cancelled.
+     */
+    uiHelperFunctions.showConfirmDialog = function(message, title = '确认') {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('customConfirmModal');
+            const titleEl = document.getElementById('customConfirmTitle');
+            const messageEl = document.getElementById('customConfirmMessage');
+            const okBtn = document.getElementById('customConfirmOkBtn');
+            const cancelBtn = document.getElementById('customConfirmCancelBtn');
+
+            if (!modal || !okBtn || !cancelBtn) {
+                // fallback to native confirm if DOM not available
+                resolve(confirm(message));
+                return;
+            }
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+
+            const cleanup = (result) => {
+                modal.classList.remove('active');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+                modal.onclick = null;
+                resolve(result);
+            };
+
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
+            // click on backdrop (outside modal-content) cancels
+            modal.onclick = (e) => {
+                if (e.target === modal) cleanup(false);
+            };
+
+            modal.classList.add('active');
+            okBtn.focus();
+        });
+    };
+
+    /**
      * Shows a toast notification.
      * @param {string} message The message to display.
      * @param {number} [duration=3000] The duration in milliseconds.
