@@ -225,6 +225,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Window Controls
+    focusWindow: () => ipcRenderer.send('focus-window'),
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     unmaximizeWindow: () => ipcRenderer.send('unmaximize-window'),

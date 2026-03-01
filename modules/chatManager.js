@@ -169,7 +169,6 @@ window.chatManager = (() => {
     // --- Functions moved from renderer.js ---
  
     function displayNoItemSelected() {
-        console.warn('[DIAG] displayNoItemSelected() 被调用', new Error().stack);
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
@@ -186,7 +185,6 @@ window.chatManager = (() => {
     }
 
     async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
-        console.warn(`[DIAG] selectItem() 被调用: itemId=${itemId}, itemType=${itemType}`, new Error().stack);
         // 心流锁激活时，不允许切换Agent
         if (window.flowlockManager && window.flowlockManager.getState && window.flowlockManager.getState().isActive) {
             if (uiHelper && uiHelper.showToastNotification) {
@@ -206,7 +204,6 @@ window.chatManager = (() => {
         let currentTopicId = currentTopicIdRef.get();
 
         if (currentSelectedItem.id === itemId && currentSelectedItem.type === itemType && currentTopicId) {
-            console.warn(`[DIAG] selectItem() 早期返回: 同一item已选中, currentTopicId=${currentTopicId}`);
             return;
         }
 
@@ -302,7 +299,6 @@ window.chatManager = (() => {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `选择${itemType === 'group' ? '群组' : '助手'}时出错: ${e.message}`, timestamp: Date.now() });
         }
 
-        console.warn('[DIAG] selectItem() 完成，正在启用输入框');
         messageInput.disabled = false;
         sendMessageBtn.disabled = false;
         attachFileBtn.disabled = false;
@@ -312,7 +308,6 @@ window.chatManager = (() => {
     }
  
     async function selectTopic(topicId) {
-        console.warn(`[DIAG] selectTopic() 被调用: topicId=${topicId}, currentTopicId=${currentTopicIdRef.get()}`);
         // 心流锁激活时，不允许切换话题
         if (window.flowlockManager && window.flowlockManager.getState && window.flowlockManager.getState().isActive) {
             if (uiHelper && uiHelper.showToastNotification) {
@@ -354,7 +349,6 @@ window.chatManager = (() => {
     }
 
     async function handleTopicDeletion(remainingTopics) {
-        console.warn(`[DIAG] handleTopicDeletion() 被调用: remainingTopics.length=${remainingTopics?.length}`);
         const { messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentSelectedItem = currentSelectedItemRef.get();
         const config = currentSelectedItem.config || currentSelectedItem;
@@ -368,11 +362,8 @@ window.chatManager = (() => {
 
         if (remainingTopics && remainingTopics.length > 0) {
             const newSelectedTopic = remainingTopics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-            console.warn(`[DIAG] handleTopicDeletion: 将调用 selectItem, newSelectedTopic.id=${newSelectedTopic.id}`);
             await selectItem(currentSelectedItem.id, currentSelectedItem.type, currentSelectedItem.name, currentSelectedItem.avatarUrl, (currentSelectedItem.config || currentSelectedItem));
-            console.warn(`[DIAG] handleTopicDeletion: selectItem 完成, messageInput.disabled=${messageInput.disabled}`);
             await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, newSelectedTopic.id);
-            console.warn(`[DIAG] handleTopicDeletion: loadChatHistory 完成, messageInput.disabled=${messageInput.disabled}`);
             currentTopicIdRef.set(newSelectedTopic.id);
             if (messageRenderer) messageRenderer.setCurrentTopicId(newSelectedTopic.id);
         } else {

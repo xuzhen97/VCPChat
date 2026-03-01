@@ -11,6 +11,13 @@ function initialize(mainWindow, openChildWindows) {
     let forumWindowInstance = null;
     let memoWindowInstance = null;
     // --- Window Control IPC Handlers ---
+    ipcMain.on('focus-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.focus();
+        }
+    });
+
     ipcMain.on('minimize-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {
