@@ -138,6 +138,8 @@ let mainWindow;
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
+let vcpInfoWebSocket;
+let vcpInfoReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
 let translatorWindow = null; // To hold the single instance of the translator window
@@ -1208,6 +1210,55 @@ async function setupVcpNodeHeaderInjection(appSettingsManager) {
         };
     }
 
+    // VCPInfo WebSocket Connection (for AGENT_STREAMING_* messages)
+    function connectVcpInfo(wsUrl, wsKey) {
+        const WebSocket = require('ws');
+        if (!wsUrl || !wsKey) return;
+
+        const fullWsUrl = `${wsUrl}/vcpinfo/VCP_Key=${wsKey}`;
+
+        if (vcpInfoWebSocket && (vcpInfoWebSocket.readyState === WebSocket.OPEN || vcpInfoWebSocket.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        vcpInfoWebSocket = new WebSocket(fullWsUrl);
+
+        vcpInfoWebSocket.onopen = () => {
+            if (DEBUG_MODE_MAIN) console.log('[MAIN_VCP_INFO] WebSocket connected.');
+            if (vcpInfoReconnectInterval) {
+                clearTimeout(vcpInfoReconnectInterval);
+                vcpInfoReconnectInterval = null;
+            }
+        };
+
+        vcpInfoWebSocket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data.toString());
+                // 只转发 AGENT_STREAMING_* 消息到渲染进程
+                if (data.type && data.type.startsWith('AGENT_STREAMING_')) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('agent-streaming-event', data);
+                    }
+                }
+            } catch (e) {
+                console.error('[MAIN_VCP_INFO] Parse error:', e.message);
+            }
+        };
+
+        vcpInfoWebSocket.onclose = () => {
+            if (!vcpInfoReconnectInterval && wsUrl && wsKey) {
+                vcpInfoReconnectInterval = setTimeout(() => {
+                    vcpInfoReconnectInterval = null;
+                    connectVcpInfo(wsUrl, wsKey);
+                }, 5000);
+            }
+        };
+
+        vcpInfoWebSocket.onerror = (error) => {
+            console.error('[MAIN_VCP_INFO] WebSocket error:', error.message);
+        };
+    }
+
     ipcMain.on('connect-vcplog', (event, { url, key }) => {
         if (vcpLogWebSocket) {
             vcpLogWebSocket.close();
@@ -1217,6 +1268,7 @@ async function setupVcpNodeHeaderInjection(appSettingsManager) {
             vcpLogReconnectInterval = null;
         }
         connectVcpLog(url, key);
+        connectVcpInfo(url, key);
     });
 
     ipcMain.on('disconnect-vcplog', () => {
@@ -1226,6 +1278,13 @@ async function setupVcpNodeHeaderInjection(appSettingsManager) {
         if (vcpLogReconnectInterval) {
             clearTimeout(vcpLogReconnectInterval);
             vcpLogReconnectInterval = null;
+        }
+        if (vcpInfoWebSocket) {
+            vcpInfoWebSocket.close();
+        }
+        if (vcpInfoReconnectInterval) {
+            clearTimeout(vcpInfoReconnectInterval);
+            vcpInfoReconnectInterval = null;
         }
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         console.log('VCPLog 已手动断开');

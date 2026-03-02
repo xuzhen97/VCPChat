@@ -346,6 +346,95 @@ import { setupEventListeners } from './modules/event-listeners.js';
         }
     });
 
+    // --- Agent Sub-Conversation Streaming ---
+    // 管理当前活跃的 Agent 子对话容器
+    const activeAgentStreams = new Map(); // agentName -> { containerEl, contentEl }
+
+    if (window.electronAPI.onAgentStreamingEvent) {
+        window.electronAPI.onAgentStreamingEvent((data) => {
+            const { type, agentName, delta, accumulated } = data;
+
+            switch (type) {
+                case 'AGENT_STREAMING_START': {
+                    // 找到最近的 AgentAssistant 工具气泡，添加子对话容器
+                    const toolBubbles = document.querySelectorAll('.vcp-tool-use-bubble');
+                    let targetBubble = null;
+                    // 从后往前找，找到最近的包含 AgentAssistant 的工具气泡
+                    for (let i = toolBubbles.length - 1; i >= 0; i--) {
+                        const nameEl = toolBubbles[i].querySelector('.vcp-tool-name-highlight');
+                        if (nameEl && nameEl.textContent.trim() === 'AgentAssistant') {
+                            targetBubble = toolBubbles[i];
+                            break;
+                        }
+                    }
+                    if (!targetBubble) break;
+
+                    // 如果已存在子对话容器，先移除
+                    const existing = targetBubble.querySelector('.vcp-agent-sub-conversation');
+                    if (existing) existing.remove();
+
+                    // 创建子对话容器
+                    const container = document.createElement('div');
+                    container.className = 'vcp-agent-sub-conversation';
+                    container.dataset.agentName = agentName;
+                    container.innerHTML = `
+                        <div class="vcp-agent-sub-conversation-header">
+                            <span class="agent-name">${agentName} 实时响应</span>
+                            <button class="toggle-btn" style="display:none;">折叠</button>
+                        </div>
+                        <div class="vcp-agent-sub-conversation-content"><span class="streaming-cursor"></span></div>
+                    `;
+                    targetBubble.appendChild(container);
+
+                    const contentEl = container.querySelector('.vcp-agent-sub-conversation-content');
+                    activeAgentStreams.set(agentName, { containerEl: container, contentEl: contentEl });
+                    break;
+                }
+
+                case 'AGENT_STREAMING_PROGRESS': {
+                    const streamState = activeAgentStreams.get(agentName);
+                    if (!streamState) break;
+
+                    const { contentEl } = streamState;
+                    // 移除光标，追加文本，再添加光标
+                    const cursor = contentEl.querySelector('.streaming-cursor');
+                    if (cursor) cursor.remove();
+                    contentEl.appendChild(document.createTextNode(delta));
+                    const newCursor = document.createElement('span');
+                    newCursor.className = 'streaming-cursor';
+                    contentEl.appendChild(newCursor);
+
+                    // 自动滚动到底部
+                    streamState.containerEl.scrollTop = streamState.containerEl.scrollHeight;
+                    break;
+                }
+
+                case 'AGENT_STREAMING_DONE': {
+                    const streamState = activeAgentStreams.get(agentName);
+                    if (!streamState) break;
+
+                    const { containerEl, contentEl } = streamState;
+                    // 移除光标
+                    const cursor = contentEl.querySelector('.streaming-cursor');
+                    if (cursor) cursor.remove();
+
+                    // 显示折叠按钮
+                    const toggleBtn = containerEl.querySelector('.toggle-btn');
+                    if (toggleBtn) {
+                        toggleBtn.style.display = '';
+                        toggleBtn.addEventListener('click', () => {
+                            containerEl.classList.toggle('collapsed');
+                            toggleBtn.textContent = containerEl.classList.contains('collapsed') ? '展开' : '折叠';
+                        });
+                    }
+
+                    activeAgentStreams.delete(agentName);
+                    break;
+                }
+            }
+        });
+    }
+
     // Unified listener for all VCP stream events (agent and group)
     window.electronAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {

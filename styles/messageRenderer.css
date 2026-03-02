@@ -1239,3 +1239,74 @@ body.light-theme .vcp-thought-chain-bubble {
 .vcp-thought-chain-bubble .vcp-result-toggle-icon {
     margin-left: 10px;
 }
+
+/* ===== Agent Sub-Conversation (Streaming Progress) ===== */
+
+.vcp-agent-sub-conversation {
+    margin-top: 8px;
+    border-left: 2px solid var(--accent-agent, #3b82f6);
+    padding: 8px 12px;
+    background: rgba(59, 130, 246, 0.04);
+    border-radius: 0 6px 6px 0;
+    max-height: 400px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease;
+}
+
+.vcp-agent-sub-conversation.collapsed {
+    max-height: 36px;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.vcp-agent-sub-conversation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.85em;
+}
+
+.vcp-agent-sub-conversation-header .agent-name {
+    color: var(--accent-agent, #3b82f6);
+    font-weight: 600;
+}
+
+.vcp-agent-sub-conversation-header .toggle-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.5);
+    padding: 1px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.vcp-agent-sub-conversation-header .toggle-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.vcp-agent-sub-conversation-content {
+    font-size: 0.9em;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.vcp-agent-sub-conversation-content .streaming-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent-agent, #3b82f6);
+    margin-left: 2px;
+    animation: agent-stream-blink 1s step-end infinite;
+    vertical-align: text-bottom;
+}
+
+@keyframes agent-stream-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}

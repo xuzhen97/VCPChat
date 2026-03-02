@@ -187,6 +187,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     disconnectVCPLog: () => ipcRenderer.send('disconnect-vcplog'),
     onVCPLogMessage: (callback) => ipcRenderer.on('vcp-log-message', (_event, value) => callback(value)),
     onVCPLogStatus: (callback) => ipcRenderer.on('vcp-log-status', (_event, value) => callback(value)),
+    // Agent Streaming Events (from VCPInfo WebSocket)
+    onAgentStreamingEvent: (callback) => ipcRenderer.on('agent-streaming-event', (_event, data) => callback(data)),
 
     // Clipboard functions
     readImageFromClipboard: async () => {

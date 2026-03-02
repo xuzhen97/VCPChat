@@ -80,6 +80,9 @@ class RAGObserverConfig {
                 if (data.type === 'RAG_RETRIEVAL_DETAILS' ||
                     data.type === 'META_THINKING_CHAIN' ||
                     data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' ||
+                    data.type === 'AGENT_STREAMING_START' ||
+                    data.type === 'AGENT_STREAMING_PROGRESS' ||
+                    data.type === 'AGENT_STREAMING_DONE' ||
                     data.type === 'AI_MEMO_RETRIEVAL' ||
                     data.type === 'DailyNote' ||
                     (data.type && data.type.startsWith('AGENT_DREAM_'))) {

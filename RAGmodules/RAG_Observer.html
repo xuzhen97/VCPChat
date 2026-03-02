@@ -661,6 +661,9 @@
         function displayRagInfo(data) {
             // Handle specialized types first
             if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return displayAgentChat(data);
+            if (data.type === 'AGENT_STREAMING_START') return displayAgentStreamingStart(data);
+            if (data.type === 'AGENT_STREAMING_PROGRESS') return displayAgentStreamingProgress(data);
+            if (data.type === 'AGENT_STREAMING_DONE') return displayAgentStreamingDone(data);
             if (data.type === 'META_THINKING_CHAIN') return displayChain(data);
             if (data.type === 'AI_MEMO_RETRIEVAL') return displayMemo(data);
             if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
@@ -825,6 +828,46 @@
                 </div>
             `;
             prependCard(block);
+        }
+
+        // 3.5 AGENT STREAMING BLOCK
+        const agentStreamingCards = new Map();
+
+        function displayAgentStreamingStart(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-chat card-enter';
+            block.id = `agent-stream-${data.agentName}`;
+            block.innerHTML = `
+                <h3 style="color: var(--accent-agent);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    ${data.agentName} 实时响应中...
+                </h3>
+                <div class="agent-stream-content" style="margin-top:10px; padding-left:10px; border-left:2px solid var(--accent-agent); white-space:pre-wrap; font-size:0.9em; line-height:1.6; max-height:300px; overflow-y:auto;"></div>
+            `;
+            prependCard(block);
+            agentStreamingCards.set(data.agentName, block);
+        }
+
+        function displayAgentStreamingProgress(data) {
+            let card = agentStreamingCards.get(data.agentName);
+            if (!card) {
+                displayAgentStreamingStart(data);
+                card = agentStreamingCards.get(data.agentName);
+            }
+            const contentEl = card.querySelector('.agent-stream-content');
+            if (contentEl) {
+                contentEl.textContent += data.delta;
+                contentEl.scrollTop = contentEl.scrollHeight;
+            }
+        }
+
+        function displayAgentStreamingDone(data) {
+            const card = agentStreamingCards.get(data.agentName);
+            if (card) {
+                const h3 = card.querySelector('h3');
+                if (h3) h3.innerHTML = h3.innerHTML.replace('实时响应中...', '响应完成');
+            }
+            agentStreamingCards.delete(data.agentName);
         }
 
         // 4. MEMO BLOCK
