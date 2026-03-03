@@ -69,7 +69,10 @@ function showContextMenu(event, messageItem, message) {
                 // --- 群聊中止逻辑 ---
                 console.log(`[ContextMenu] Attempting to interrupt GROUP message: ${activeMessageId}`);
                 if (electronAPI && typeof electronAPI.interruptGroupRequest === 'function') {
-                    const result = await electronAPI.interruptGroupRequest(activeMessageId);
+                    const result = await electronAPI.interruptGroupRequest({
+                        messageId: activeMessageId,
+                        source: 'context_menu_group'
+                    });
                     if (result.success) {
                         uiHelper.showToastNotification("已发送群聊中止信号。", "success");
                     } else {
@@ -87,7 +90,7 @@ function showContextMenu(event, messageItem, message) {
                 // --- 普通单聊中止逻辑 ---
                 console.log(`[ContextMenu] Attempting to interrupt AGENT message: ${activeMessageId}`);
                 if (contextMenuDependencies.interruptHandler && typeof contextMenuDependencies.interruptHandler.interrupt === 'function') {
-                    const result = await contextMenuDependencies.interruptHandler.interrupt(activeMessageId);
+                    const result = await contextMenuDependencies.interruptHandler.interrupt(activeMessageId, 'context_menu_agent');
                     if (result.success) {
                         uiHelper.showToastNotification("已发送中止信号。", "success");
                     } else {

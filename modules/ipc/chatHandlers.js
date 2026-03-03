@@ -932,7 +932,11 @@ function initialize(mainWindow, context) {
     });
 
 
-    ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
+    ipcMain.handle('interrupt-vcp-request', async (event, { messageId, source }) => {
+        if (source !== 'context_menu_agent') {
+            console.warn(`[Main - interrupt] Rejecting interrupt for messageId ${messageId}: source not allowed (${source || 'missing'})`);
+            return { success: false, error: 'Interrupt source not allowed' };
+        }
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
             if (!await fs.pathExists(settingsPath)) {
@@ -950,7 +954,7 @@ function initialize(mainWindow, context) {
             const urlObject = new URL(vcpUrl);
             const interruptUrl = `${urlObject.protocol}//${urlObject.host}/v1/interrupt`;
 
-            console.log(`[Main - interrupt] Sending interrupt for messageId: ${messageId} to ${interruptUrl}`);
+            console.log(`[Main - interrupt] Sending interrupt for messageId: ${messageId} to ${interruptUrl} (source: ${source})`);
 
             const response = await fetch(interruptUrl, {
                 method: 'POST',

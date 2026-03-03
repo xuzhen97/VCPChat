@@ -13,9 +13,10 @@ function initialize(api) {
 /**
  * Sends an interrupt request to the main process for a given message ID.
  * @param {string} messageId - The ID of the message/request to interrupt.
+ * @param {string} [source='unknown'] - Interrupt source identifier.
  * @returns {Promise<{success: boolean, error?: string, message?: string}>}
  */
-async function interrupt(messageId) {
+async function interrupt(messageId, source = 'unknown') {
     if (!electronAPI || typeof electronAPI.interruptVcpRequest !== 'function') {
         const errorMsg = 'Interrupt handler is not initialized or interruptVcpRequest is not available on electronAPI.';
         console.error(errorMsg);
@@ -28,7 +29,7 @@ async function interrupt(messageId) {
 
     console.log(`[InterruptHandler] Requesting interruption for messageId: ${messageId}`);
     try {
-        const result = await electronAPI.interruptVcpRequest({ messageId });
+        const result = await electronAPI.interruptVcpRequest({ messageId, source });
         if (result.success) {
             console.log(`[InterruptHandler] Successfully sent interrupt for ${messageId}.`);
         } else {

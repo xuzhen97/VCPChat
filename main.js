@@ -1399,8 +1399,16 @@ async function handleCanvasControl(filePath) {
 }
 
 // --- Group Chat Interrupt Handler ---
-ipcMain.handle('interrupt-group-request', (event, messageId) => {
-    console.log(`[Main] Received interrupt-group-request for messageId: ${messageId}`);
+ipcMain.handle('interrupt-group-request', (event, data) => {
+    const messageId = data && data.messageId;
+    const source = data && data.source;
+
+    if (source !== 'context_menu_group') {
+        console.warn(`[Main] Rejecting interrupt-group-request for messageId ${messageId}: source not allowed (${source || 'missing'})`);
+        return { success: false, error: 'Interrupt source not allowed' };
+    }
+
+    console.log(`[Main] Received interrupt-group-request for messageId: ${messageId} (source: ${source})`);
     if (groupChat && typeof groupChat.interruptGroupRequest === 'function') {
         return groupChat.interruptGroupRequest(messageId);
     } else {
