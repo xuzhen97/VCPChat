@@ -197,12 +197,6 @@ async function sendToVCP(params) {
     activeRequests.set(messageId, controller);
     console.log(`[VCPClient] Registered AbortController for messageId: ${messageId}. Active requests: ${activeRequests.size}`);
 
-    // 设置超时（30秒）
-    const timeoutId = setTimeout(() => {
-        console.log(`[VCPClient] Timeout triggered for messageId: ${messageId}`);
-        controller.abort();
-    }, 30000);
-
     try {
         console.log(`[VCPClient] Sending request to: ${finalVcpUrl}`);
         const response = await fetch(finalVcpUrl, {
@@ -214,8 +208,6 @@ async function sendToVCP(params) {
             body: serializedBody,
             signal: controller.signal
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -383,8 +375,6 @@ async function sendToVCP(params) {
         }
 
     } catch (error) {
-        clearTimeout(timeoutId);
-        
         if (error.name === 'AbortError') {
             console.log(`[VCPClient] Request aborted for messageId: ${messageId}`);
             if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {

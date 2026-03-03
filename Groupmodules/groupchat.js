@@ -684,9 +684,7 @@ ${att._fileManagerData.extractedText}
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
             };
 
-            // 添加超时控制
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
             activeRequestControllers.set(messageIdForAgentResponse, controller);
             
             let response;
@@ -707,7 +705,6 @@ ${att._fileManagerData.extractedText}
                     signal: controller.signal
                 });
             } catch (fetchError) {
-                clearTimeout(timeoutId);
                 if (fetchError.name === 'AbortError') {
                     // This case handles when the request is aborted BEFORE the stream starts.
                     // The stream's own catch block will handle abortions DURING streaming.
@@ -721,8 +718,6 @@ ${att._fileManagerData.extractedText}
                     continue;
                 }
                 throw fetchError;
-            } finally {
-                clearTimeout(timeoutId);
             }
 
             if (!response.ok) {
@@ -1182,9 +1177,7 @@ ${att._fileManagerData.extractedText}
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
 
-        // 添加超时控制
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
         activeRequestControllers.set(messageIdForAgentResponse, controller);
         
         let response;
@@ -1206,7 +1199,6 @@ ${att._fileManagerData.extractedText}
                 signal: controller.signal
             });
         } catch (fetchError) {
-            clearTimeout(timeoutId);
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
                 if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1215,8 +1207,6 @@ ${att._fileManagerData.extractedText}
                 return;
             }
             throw fetchError;
-        } finally {
-            clearTimeout(timeoutId);
         }
 
         if (!response.ok) {
