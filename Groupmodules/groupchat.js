@@ -6,6 +6,7 @@ const { ipcMain } = require('electron');
 const contextSanitizer = require('../modules/contextSanitizer');
 const fileManager = require('../modules/fileManager');
 const canvasHandlers = require('../modules/ipc/canvasHandlers');
+const { mapStreamCompletion, normalizeFinishReason } = require('../modules/streamCompletionMapper');
 // const { v4: uuidv4 } = require('uuid'); // 如果需要唯一ID生成
 
 const activeRequestControllers = new Map();
@@ -15,6 +16,16 @@ const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 // 新增：话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
 const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的模式匹配
+
+function buildCompletionPayload(input = {}) {
+    const meta = mapStreamCompletion(input);
+    return {
+        completion_state: meta.completionState,
+        finish_reason: meta.finishReason,
+        end_source: meta.endSource,
+        has_content: meta.hasContent
+    };
+}
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
@@ -712,8 +723,20 @@ ${att._fileManagerData.extractedText}
                     // We don't need to save history here as no response was generated.
                     // The 'thinking' bubble will just disappear without a message, which is acceptable.
                     // We send an 'end' event to make sure the UI cleans up the thinking bubble.
-                     if (typeof sendStreamChunkToRenderer === 'function') {
-                        sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, interrupted: true });
+                    if (typeof sendStreamChunkToRenderer === 'function') {
+                        sendStreamChunkToRenderer({
+                            type: 'end',
+                            error: '用户中止',
+                            fullResponse: '',
+                            messageId: messageIdForAgentResponse,
+                            context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                            interrupted: true,
+                            ...buildCompletionPayload({
+                                endSource: 'abort',
+                                interrupted: true,
+                                hasContent: false
+                            })
+                        });
                     }
                     continue;
                 }
@@ -733,7 +756,18 @@ ${att._fileManagerData.extractedText}
 
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     // Finalize the 'thinking' bubble with an error message
-                    sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                    sendStreamChunkToRenderer({
+                        type: 'end',
+                        error: errorMessageToPropagate,
+                        fullResponse: `[错误] ${errorMessageToPropagate}`,
+                        messageId: messageIdForAgentResponse,
+                        context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                        ...buildCompletionPayload({
+                            endSource: 'http_error',
+                            hasError: true,
+                            hasContent: false
+                        })
+                    });
                 }
                 continue; // Move to the next agent
             }
@@ -763,6 +797,7 @@ ${att._fileManagerData.extractedText}
                 // This function will now be awaited
                 async function processStreamForGroupAndUpdateHistory() {
                     let accumulatedResponse = "";
+                    let latestFinishReason = null;
                     try {
                         while (true) {
                             const { done, value } = await reader.read();
@@ -772,7 +807,17 @@ ${att._fileManagerData.extractedText}
                                 groupHistory.push(finalAiResponseEntry);
                                 await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                 if (typeof sendStreamChunkToRenderer === 'function') {
-                                    sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                                    sendStreamChunkToRenderer({
+                                        type: 'end',
+                                        messageId: messageIdForAgentResponse,
+                                        context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                                        fullResponse: accumulatedResponse,
+                                        ...buildCompletionPayload({
+                                            endSource: 'stream_closed',
+                                            finishReason: latestFinishReason,
+                                            hasContent: accumulatedResponse.trim() !== ''
+                                        })
+                                    });
                                 }
                                 break;
                             }
@@ -787,12 +832,26 @@ ${att._fileManagerData.extractedText}
                                         groupHistory.push(doneAiResponseEntry);
                                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                         if (typeof sendStreamChunkToRenderer === 'function') {
-                                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                                            sendStreamChunkToRenderer({
+                                                type: 'end',
+                                                messageId: messageIdForAgentResponse,
+                                                context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                                                fullResponse: accumulatedResponse,
+                                                ...buildCompletionPayload({
+                                                    endSource: 'done_token',
+                                                    finishReason: latestFinishReason,
+                                                    hasContent: accumulatedResponse.trim() !== ''
+                                                })
+                                            });
                                         }
                                         return;
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        const chunkFinishReason = normalizeFinishReason(parsedChunk?.choices?.[0]?.finish_reason);
+                                        if (chunkFinishReason) {
+                                            latestFinishReason = chunkFinishReason;
+                                        }
                                         
                                         // 更全面的安全检查，处理各种可能的响应格式
                                         let hasContent = false;
@@ -856,7 +915,18 @@ ${att._fileManagerData.extractedText}
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 // Send 'end' event to finalize the UI with the partial content.
-                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                                sendStreamChunkToRenderer({
+                                    type: 'end',
+                                    messageId: messageIdForAgentResponse,
+                                    context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                                    fullResponse: accumulatedResponse,
+                                    interrupted: true,
+                                    ...buildCompletionPayload({
+                                        endSource: 'abort',
+                                        interrupted: true,
+                                        hasContent: accumulatedResponse.trim() !== ''
+                                    })
+                                });
                             }
                         } else {
                             console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
@@ -865,7 +935,17 @@ ${att._fileManagerData.extractedText}
                             groupHistory.push(streamErrorResponseEntry);
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                                sendStreamChunkToRenderer({
+                                    type: 'error',
+                                    error: `VCP stream reading error: ${streamError.message}`,
+                                    messageId: messageIdForAgentResponse,
+                                    context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                                    ...buildCompletionPayload({
+                                        endSource: 'stream_error',
+                                        hasError: true,
+                                        hasContent: accumulatedResponse.trim() !== ''
+                                    })
+                                });
                             }
                         }
                     } finally {
@@ -910,7 +990,18 @@ ${att._fileManagerData.extractedText}
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
             if (typeof sendStreamChunkToRenderer === 'function') {
                 // Finalize the 'thinking' bubble with an error
-                sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({
+                    type: 'end',
+                    error: error.message,
+                    fullResponse: errorText,
+                    messageId: messageIdForAgentResponse,
+                    context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
+                    ...buildCompletionPayload({
+                        endSource: 'stream_error',
+                        hasError: true,
+                        hasContent: false
+                    })
+                });
             }
         }
         } // End of loop for agentsToRespond
@@ -1202,7 +1293,19 @@ ${att._fileManagerData.extractedText}
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
                 if (typeof sendStreamChunkToRenderer === 'function') {
-                    sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, interrupted: true });
+                    sendStreamChunkToRenderer({
+                        type: 'end',
+                        error: '用户中止',
+                        fullResponse: '',
+                        messageId: messageIdForAgentResponse,
+                        context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                        interrupted: true,
+                        ...buildCompletionPayload({
+                            endSource: 'abort',
+                            interrupted: true,
+                            hasContent: false
+                        })
+                    });
                 }
                 return;
             }
@@ -1221,7 +1324,18 @@ ${att._fileManagerData.extractedText}
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
  
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({
+                    type: 'end',
+                    error: errorMessageToPropagate,
+                    fullResponse: `[错误] ${errorMessageToPropagate}`,
+                    messageId: messageIdForAgentResponse,
+                    context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                    ...buildCompletionPayload({
+                        endSource: 'http_error',
+                        hasError: true,
+                        hasContent: false
+                    })
+                });
             }
             return;
         }
@@ -1249,6 +1363,7 @@ ${att._fileManagerData.extractedText}
             
             async function processStreamForInvitedAgent() {
                 let accumulatedResponse = "";
+                let latestFinishReason = null;
                 try {
                     while (true) {
                         const { done, value } = await reader.read();
@@ -1257,7 +1372,17 @@ ${att._fileManagerData.extractedText}
                             groupHistory.push(finalAiResponseEntry);
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                                sendStreamChunkToRenderer({
+                                    type: 'end',
+                                    messageId: messageIdForAgentResponse,
+                                    context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                                    fullResponse: accumulatedResponse,
+                                    ...buildCompletionPayload({
+                                        endSource: 'stream_closed',
+                                        finishReason: latestFinishReason,
+                                        hasContent: accumulatedResponse.trim() !== ''
+                                    })
+                                });
                             }
                             break;
                         }
@@ -1271,12 +1396,26 @@ ${att._fileManagerData.extractedText}
                                     groupHistory.push(doneAiResponseEntry);
                                     await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                     if (typeof sendStreamChunkToRenderer === 'function') {
-                                        sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                                        sendStreamChunkToRenderer({
+                                            type: 'end',
+                                            messageId: messageIdForAgentResponse,
+                                            context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                                            fullResponse: accumulatedResponse,
+                                            ...buildCompletionPayload({
+                                                endSource: 'done_token',
+                                                finishReason: latestFinishReason,
+                                                hasContent: accumulatedResponse.trim() !== ''
+                                            })
+                                        });
                                     }
                                     return;
                                 }
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
+                                    const chunkFinishReason = normalizeFinishReason(parsedChunk?.choices?.[0]?.finish_reason);
+                                    if (chunkFinishReason) {
+                                        latestFinishReason = chunkFinishReason;
+                                    }
                                     
                                     // 更全面的安全检查，处理各种可能的响应格式
                                     let hasContent = false;
@@ -1340,7 +1479,18 @@ ${att._fileManagerData.extractedText}
                         groupHistory.push(finalAiResponseEntry);
                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                            sendStreamChunkToRenderer({
+                                type: 'end',
+                                messageId: messageIdForAgentResponse,
+                                context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                                fullResponse: accumulatedResponse,
+                                interrupted: true,
+                                ...buildCompletionPayload({
+                                    endSource: 'abort',
+                                    interrupted: true,
+                                    hasContent: accumulatedResponse.trim() !== ''
+                                })
+                            });
                         }
                     } else {
                         console.error(`[GroupChat Invite] VCP stream reading error for ${agentName}:`, streamError);
@@ -1349,7 +1499,17 @@ ${att._fileManagerData.extractedText}
                         groupHistory.push(streamErrorResponseEntry);
                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                            sendStreamChunkToRenderer({
+                                type: 'error',
+                                error: `VCP stream reading error (invite): ${streamError.message}`,
+                                messageId: messageIdForAgentResponse,
+                                context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                                ...buildCompletionPayload({
+                                    endSource: 'stream_error',
+                                    hasError: true,
+                                    hasContent: accumulatedResponse.trim() !== ''
+                                })
+                            });
                         }
                     }
                 } finally {
@@ -1391,7 +1551,18 @@ ${att._fileManagerData.extractedText}
         groupHistory.push(errorResponse);
         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+            sendStreamChunkToRenderer({
+                type: 'end',
+                error: error.message,
+                fullResponse: errorText,
+                messageId: messageIdForAgentResponse,
+                context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
+                ...buildCompletionPayload({
+                    endSource: 'stream_error',
+                    hasError: true,
+                    hasContent: false
+                })
+            });
         }
     }
 

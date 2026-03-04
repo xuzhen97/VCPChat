@@ -1,6 +1,7 @@
 // modules/vcpClient.js - 统一的 VCP 请求处理模块
 const fs = require('fs-extra');
 const path = require('path');
+const { mapStreamCompletion, normalizeFinishReason } = require('./streamCompletionMapper');
 
 // 全局的 AbortController 映射：messageId -> AbortController
 const activeRequests = new Map();
@@ -197,6 +198,16 @@ async function sendToVCP(params) {
     activeRequests.set(messageId, controller);
     console.log(`[VCPClient] Registered AbortController for messageId: ${messageId}. Active requests: ${activeRequests.size}`);
 
+    const buildCompletionPayload = (input) => {
+        const completionMeta = mapStreamCompletion(input);
+        return {
+            completion_state: completionMeta.completionState,
+            finish_reason: completionMeta.finishReason,
+            end_source: completionMeta.endSource,
+            has_content: completionMeta.hasContent
+        };
+    };
+
     try {
         console.log(`[VCPClient] Sending request to: ${finalVcpUrl}`);
         const response = await fetch(finalVcpUrl, {
@@ -252,7 +263,17 @@ async function sendToVCP(params) {
                     detailedErrorMessage += ` 详情: ${errorData.details}`;
                 }
 
-                const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
+                const errorPayload = {
+                    type: 'error',
+                    error: `VCP请求失败: ${detailedErrorMessage}`,
+                    details: errorData,
+                    messageId: messageId,
+                    ...buildCompletionPayload({
+                        endSource: 'http_error',
+                        hasError: true,
+                        hasContent: false
+                    })
+                };
                 if (context) errorPayload.context = context;
                 webContents.send(streamChannel, errorPayload);
                 
@@ -274,6 +295,7 @@ async function sendToVCP(params) {
             async function processStream() {
                 let buffer = '';
                 let accumulatedResponse = ''; // Accumulate the full response text
+                let latestFinishReason = null;
                 try {
                     while (true) {
                         const { done, value } = await reader.read();
@@ -291,7 +313,16 @@ async function sendToVCP(params) {
                                 const jsonData = line.substring(5).trim();
                                 if (jsonData === '[DONE]') {
                                     console.log(`[VCPClient] Stream [DONE] for messageId: ${messageId}`);
-                                    const donePayload = { type: 'end', messageId: messageId, context };
+                                    const donePayload = {
+                                        type: 'end',
+                                        messageId: messageId,
+                                        context,
+                                        ...buildCompletionPayload({
+                                            endSource: 'done_token',
+                                            finishReason: latestFinishReason,
+                                            hasContent: accumulatedResponse.trim() !== ''
+                                        })
+                                    };
                                     if (webContents && !webContents.isDestroyed()) {
                                         webContents.send(streamChannel, donePayload);
                                     }
@@ -304,6 +335,10 @@ async function sendToVCP(params) {
                                 
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
+                                    const chunkFinishReason = normalizeFinishReason(parsedChunk?.choices?.[0]?.finish_reason);
+                                    if (chunkFinishReason) {
+                                        latestFinishReason = chunkFinishReason;
+                                    }
                                     
                                     // Accumulate content
                                     let textToAppend = "";
@@ -334,7 +369,16 @@ async function sendToVCP(params) {
 
                         if (done) {
                             console.log(`[VCPClient] Stream ended for messageId: ${messageId}`);
-                            const endPayload = { type: 'end', messageId: messageId, context };
+                            const endPayload = {
+                                type: 'end',
+                                messageId: messageId,
+                                context,
+                                ...buildCompletionPayload({
+                                    endSource: 'stream_closed',
+                                    finishReason: latestFinishReason,
+                                    hasContent: accumulatedResponse.trim() !== ''
+                                })
+                            };
                             if (webContents && !webContents.isDestroyed()) {
                                 webContents.send(streamChannel, endPayload);
                             }
@@ -346,7 +390,16 @@ async function sendToVCP(params) {
                     }
                 } catch (streamError) {
                     console.error(`[VCPClient] Stream reading error for messageId: ${messageId}:`, streamError);
-                    const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                    const streamErrPayload = {
+                        type: 'error',
+                        error: `VCP流读取错误: ${streamError.message}`,
+                        messageId: messageId,
+                        ...buildCompletionPayload({
+                            endSource: 'stream_error',
+                            hasError: true,
+                            hasContent: accumulatedResponse.trim() !== ''
+                        })
+                    };
                     if (context) streamErrPayload.context = context;
                     if (webContents && !webContents.isDestroyed()) {
                         webContents.send(streamChannel, streamErrPayload);
@@ -378,7 +431,17 @@ async function sendToVCP(params) {
         if (error.name === 'AbortError') {
             console.log(`[VCPClient] Request aborted for messageId: ${messageId}`);
             if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {
-                const abortPayload = { type: 'error', error: '请求已中止', messageId: messageId, context };
+                const abortPayload = {
+                    type: 'error',
+                    error: '请求已中止',
+                    messageId: messageId,
+                    context,
+                    ...buildCompletionPayload({
+                        endSource: 'abort',
+                        interrupted: true,
+                        hasContent: false
+                    })
+                };
                 webContents.send(streamChannel, abortPayload);
             }
             return { aborted: true, error: '请求已中止' };
@@ -386,7 +449,17 @@ async function sendToVCP(params) {
         
         console.error('[VCPClient] Request error:', error);
         if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {
-            const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
+            const catchErrorPayload = {
+                type: 'error',
+                error: `VCP请求错误: ${error.message}`,
+                messageId: messageId,
+                context,
+                ...buildCompletionPayload({
+                    endSource: 'stream_error',
+                    hasError: true,
+                    hasContent: false
+                })
+            };
             webContents.send(streamChannel, catchErrorPayload);
             return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
         }

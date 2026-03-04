@@ -898,6 +898,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     const accumulatedText = accumulatedStreamText.get(messageId) || "";
     const payloadFullResponse = typeof finalPayload?.fullResponse === 'string' ? finalPayload.fullResponse : "";
     const payloadError = typeof finalPayload?.error === 'string' ? finalPayload.error.trim() : "";
+    const payloadFinishReason = typeof finalPayload?.finishReason === 'string' ? finalPayload.finishReason : null;
+    const payloadCompletionState = typeof finalPayload?.completionState === 'string' ? finalPayload.completionState : null;
+    const payloadEndSource = typeof finalPayload?.endSource === 'string' ? finalPayload.endSource : null;
     const streamedTextIsUsable = accumulatedText.trim() !== "" && !isThinkingPlaceholderText(accumulatedText);
     const payloadResponseIsUsable = payloadFullResponse.trim() !== "" && !isThinkingPlaceholderText(payloadFullResponse);
 
@@ -929,7 +932,16 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     
     const message = historyForThisMessage[messageIndex];
     message.content = finalFullText;
-    message.finishReason = finishReason;
+    message.finishReason = payloadFinishReason || finishReason;
+    if (payloadCompletionState) {
+        message.completionState = payloadCompletionState;
+    }
+    if (payloadEndSource) {
+        message.endSource = payloadEndSource;
+    }
+    if (typeof finalPayload?.hasContent === 'boolean') {
+        message.hasContent = finalPayload.hasContent;
+    }
     message.isThinking = false;
     if (message.isGroupMessage && storedContext) {
         message.name = storedContext.agentName || message.name;

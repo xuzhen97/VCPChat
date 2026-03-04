@@ -442,7 +442,18 @@ import { setupEventListeners } from './modules/event-listeners.js';
             return;
         }
 
-        const { type, messageId, context, chunk, error, finish_reason, fullResponse } = eventData;
+        const {
+            type,
+            messageId,
+            context,
+            chunk,
+            error,
+            finish_reason,
+            completion_state,
+            end_source,
+            has_content,
+            fullResponse
+        } = eventData;
 
         if (!messageId) {
             console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
@@ -473,9 +484,16 @@ import { setupEventListeners } from './modules/event-listeners.js';
             case 'end':
                 window.messageRenderer.finalizeStreamedMessage(
                     messageId,
-                    finish_reason || 'completed',
+                    completion_state || finish_reason || 'unknown',
                     context,
-                    { fullResponse, error }
+                    {
+                        fullResponse,
+                        error,
+                        finishReason: finish_reason || null,
+                        completionState: completion_state || null,
+                        endSource: end_source || null,
+                        hasContent: has_content === true
+                    }
                 );
                 if (context && !context.isGroupMessage) {
                     // This can run in the background
@@ -561,9 +579,16 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
                 window.messageRenderer.finalizeStreamedMessage(
                     messageId,
-                    'error',
+                    completion_state || 'error',
                     context,
-                    { fullResponse, error }
+                    {
+                        fullResponse,
+                        error,
+                        finishReason: finish_reason || 'error',
+                        completionState: completion_state || 'error',
+                        endSource: end_source || 'stream_error',
+                        hasContent: has_content === true
+                    }
                 );
                 
                 // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
