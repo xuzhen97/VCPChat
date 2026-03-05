@@ -138,6 +138,7 @@ const uiHelperFunctions = window.uiHelperFunctions;
 import searchManager from './modules/searchManager.js';
 import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
 import * as interruptHandler from './modules/interruptHandler.js';
+import { createTaskDoneOrchestrator } from './modules/renderer/taskDoneOrchestrator.js';
  
 import { setupEventListeners } from './modules/event-listeners.js';
  
@@ -435,6 +436,22 @@ import { setupEventListeners } from './modules/event-listeners.js';
         });
     }
 
+    const taskDoneOrchestrator = createTaskDoneOrchestrator({
+        maxAutoContinue: 3,
+        maxErrorRetries: 2,
+        triggerContinue: async ({ prompt }) => {
+            if (!window.handleContinueWriting) {
+                throw new Error('handleContinueWriting not available');
+            }
+            await window.handleContinueWriting(prompt);
+        },
+        notify: (message, type = 'info') => {
+            if (window.uiHelperFunctions && typeof window.uiHelperFunctions.showToastNotification === 'function') {
+                window.uiHelperFunctions.showToastNotification(message, type);
+            }
+        }
+    });
+
     // Unified listener for all VCP stream events (agent and group)
     window.electronAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {
@@ -495,6 +512,17 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         hasContent: has_content === true
                     }
                 );
+                if (context && !context.isGroupMessage && !(window.flowlockManager && window.flowlockManager.getState().isActive)) {
+                    const finalizedMessage = currentChatHistory.find(msg => msg.id === messageId);
+                    const finalText = typeof finalizedMessage?.content === 'string'
+                        ? finalizedMessage.content
+                        : (typeof fullResponse === 'string' ? fullResponse : '');
+                    await taskDoneOrchestrator.onStreamFinalized({
+                        messageId,
+                        completionState: completion_state || finish_reason || 'unknown',
+                        finalText
+                    });
+                }
                 if (context && !context.isGroupMessage) {
                     // This can run in the background
                     await window.chatManager.attemptTopicSummarizationIfNeeded();
@@ -590,6 +618,14 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         hasContent: has_content === true
                     }
                 );
+                if (context && !context.isGroupMessage && !(window.flowlockManager && window.flowlockManager.getState().isActive)) {
+                    await taskDoneOrchestrator.onStreamFinalized({
+                        messageId,
+                        completionState: completion_state || 'error',
+                        finalText: typeof fullResponse === 'string' ? fullResponse : '',
+                        interrupted: false
+                    });
+                }
                 
                 // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
                 if (window.flowlockManager) {
